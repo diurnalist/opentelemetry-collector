@@ -93,7 +93,7 @@ func InitOpenTelemetry(res *resource.Resource, options []sdkmetric.Option, disab
 	), nil
 }
 
-func InitPrometheusServer(registry *prometheus.Registry, address string, asyncErrorChannel chan error) *http.Server {
+func InitPrometheusServer(registry prometheus.Gatherer, address string, asyncErrorChannel chan error) *http.Server {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
 	server := &http.Server{
@@ -152,7 +152,8 @@ func cardinalityFilter(kvs ...attribute.KeyValue) attribute.Filter {
 }
 
 func initPrometheusExporter(prometheusConfig *config.Prometheus, asyncErrorChannel chan error) (sdkmetric.Reader, *http.Server, error) {
-	promRegistry := prometheus.NewRegistry()
+	promRegistrer := prometheus.DefaultRegisterer
+	promGatherer := prometheus.DefaultGatherer
 	if prometheusConfig.Host == nil {
 		return nil, nil, fmt.Errorf("host must be specified")
 	}
@@ -160,7 +161,7 @@ func initPrometheusExporter(prometheusConfig *config.Prometheus, asyncErrorChann
 		return nil, nil, fmt.Errorf("port must be specified")
 	}
 	exporter, err := otelprom.New(
-		otelprom.WithRegisterer(promRegistry),
+		otelprom.WithRegisterer(promRegistrer),
 		// https://github.com/open-telemetry/opentelemetry-collector/issues/8043
 		otelprom.WithoutUnits(),
 		// Disabled for the moment until this becomes stable, and we are ready to break backwards compatibility.
@@ -175,7 +176,7 @@ func initPrometheusExporter(prometheusConfig *config.Prometheus, asyncErrorChann
 		return nil, nil, fmt.Errorf("error creating otel prometheus exporter: %w", err)
 	}
 
-	return exporter, InitPrometheusServer(promRegistry, fmt.Sprintf("%s:%d", *prometheusConfig.Host, *prometheusConfig.Port), asyncErrorChannel), nil
+	return exporter, InitPrometheusServer(promGatherer, fmt.Sprintf("%s:%d", *prometheusConfig.Host, *prometheusConfig.Port), asyncErrorChannel), nil
 }
 
 func initPullExporter(exporter config.MetricExporter, asyncErrorChannel chan error) (sdkmetric.Reader, *http.Server, error) {
