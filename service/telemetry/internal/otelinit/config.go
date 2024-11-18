@@ -94,7 +94,7 @@ func InitOpenTelemetry(res *resource.Resource, options []sdkmetric.Option, disab
 	), nil
 }
 
-func InitPrometheusServer(registry *prometheus.Registry, address string, asyncErrorChannel chan error, serverWG *sync.WaitGroup) *http.Server {
+func InitPrometheusServer(registry prometheus.Gatherer, address string, asyncErrorChannel chan error, serverWG *sync.WaitGroup) *http.Server {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
 	server := &http.Server{
@@ -141,7 +141,8 @@ func cardinalityFilter(filter attribute.Set) attribute.Filter {
 }
 
 func initPrometheusExporter(prometheusConfig *config.Prometheus, asyncErrorChannel chan error, serverWG *sync.WaitGroup) (sdkmetric.Reader, *http.Server, error) {
-	promRegistry := prometheus.NewRegistry()
+	promRegistrer := prometheus.DefaultRegisterer
+	promGatherer := prometheus.DefaultGatherer
 	if prometheusConfig.Host == nil {
 		return nil, nil, errors.New("host must be specified")
 	}
@@ -150,7 +151,7 @@ func initPrometheusExporter(prometheusConfig *config.Prometheus, asyncErrorChann
 	}
 
 	opts := []otelprom.Option{
-		otelprom.WithRegisterer(promRegistry),
+		otelprom.WithRegisterer(promRegistrer),
 		// https://github.com/open-telemetry/opentelemetry-collector/issues/8043
 		otelprom.WithoutUnits(),
 		// Disabled for the moment until this becomes stable, and we are ready to break backwards compatibility.
@@ -164,7 +165,7 @@ func initPrometheusExporter(prometheusConfig *config.Prometheus, asyncErrorChann
 		return nil, nil, fmt.Errorf("error creating otel prometheus exporter: %w", err)
 	}
 
-	return exporter, InitPrometheusServer(promRegistry, net.JoinHostPort(*prometheusConfig.Host, strconv.Itoa(*prometheusConfig.Port)), asyncErrorChannel, serverWG), nil
+	return exporter, InitPrometheusServer(promGatherer, net.JoinHostPort(*prometheusConfig.Host, strconv.Itoa(*prometheusConfig.Port)), asyncErrorChannel, serverWG), nil
 }
 
 func initPullExporter(exporter config.MetricExporter, asyncErrorChannel chan error, serverWG *sync.WaitGroup) (sdkmetric.Reader, *http.Server, error) {
